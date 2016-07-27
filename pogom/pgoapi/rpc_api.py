@@ -32,8 +32,8 @@ from exceptions import NotLoggedInException, ServerBusyOrOfflineException
 from protobuf_to_dict import protobuf_to_dict
 from utilities import to_camel_case, get_class
 
-import protos.RpcEnum_pb2 as RpcEnum
-import protos.RpcEnvelope_pb2 as RpcEnvelope
+import protos.RpcEnum_palm as RpcEnum
+import protos.RpcEnvelope_palm as RpcEnvelope
 
 import pycurl
 import certifi

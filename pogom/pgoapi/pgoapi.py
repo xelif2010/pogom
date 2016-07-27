@@ -34,7 +34,7 @@ from auth_ptc import AuthPtc
 from auth_google import AuthGoogle
 from exceptions import AuthException, NotLoggedInException, ServerBusyOrOfflineException
 
-import protos.RpcEnum_pb2 as RpcEnum
+import protos.RpcEnum_palm as RpcEnum
 
 logger = logging.getLogger(__name__)
 
