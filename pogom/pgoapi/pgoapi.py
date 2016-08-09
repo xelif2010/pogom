@@ -251,6 +251,8 @@ class PGoApiWorker(Thread):
                     raise ValueError('Request returned problematic response: {}'.format(response))
             except NotLoggedInException:
                 pass  # Trying again will call _login_if_necessary
+            except AuthTokenExpiredException:
+                auth_provider._ticket_expire = time.time()
             except ServerApiEndpointRedirectException as e:
                 auth_provider.set_api_endpoint('https://{}/rpc'.format(e.get_redirected_endpoint()))
             except Exception as e:  # Never crash the worker
@@ -264,15 +266,15 @@ class PGoApiWorker(Thread):
             else:
                 if 'api_url' in response:
                     auth_provider.set_api_endpoint('https://{}/rpc'.format(response['api_url']))
-
-                if 'status_code' in response and response['status_code'] == 3:
-                    self.log.info("Status code 3 returned. Performing get_player request.")
-                    req_method_list = self.SC_3_REQUESTS + req_method_list
                 if 'responses' in response and not response['responses']:
                     self.log.info("Received empty map_object response. Logging out and retrying.")
                     auth_provider._ticket_expire = time.time() # this will trigger a login in _login_if_necessary
                 else:
                     again = False
+                if 'status_code' in response and response['status_code'] == 3:
+                    self.log.info("Status code 3 returned. Performing get_player request.")
+                    req_method_list = self.SC_3_REQUESTS + req_method_list
+                    again = True
 
         return response
 
