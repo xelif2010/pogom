@@ -5,7 +5,7 @@ import logging
 import random
 import math
 from peewee import Model, SqliteDatabase, InsertQuery, IntegerField, \
-    CharField, FloatField, BooleanField, DateTimeField, fn, SQL, CompositeKey
+    CharField, FloatField, BooleanField, DateTimeField, fn, SQL
 from datetime import datetime
 from base64 import b64encode
 import threading
@@ -33,15 +33,12 @@ class BaseModel(Model):
 class Pokemon(BaseModel):
     # We are base64 encoding the ids delivered by the api
     # because they are too big for sqlite to handle
-    encounter_id = CharField()
+    encounter_id = CharField(primary_key=True)
     spawnpoint_id = CharField()
     pokemon_id = IntegerField()
     latitude = FloatField()
     longitude = FloatField()
     disappear_time = DateTimeField()
-    
-    class Meta:
-        primary_key = CompositeKey('encounter_id', 'disappear_time')
 
     @classmethod
     def get_active(cls):
@@ -75,6 +72,23 @@ class Pokemon(BaseModel):
             p['pokemon_name'] = get_pokemon_name(p['pokemon_id'])
         return pokemons
 
+    @classmethod
+    def get_heat_stats(cls):
+        query = (Pokemon
+                 .select(Pokemon.pokemon_id, fn.COUNT(Pokemon.pokemon_id).alias('count'), Pokemon.latitude, Pokemon.longitude)
+                 .group_by(Pokemon.latitude, Pokemon.longitude, Pokemon.pokemon_id)
+                 .order_by(-SQL('count'))
+                 .dicts())
+
+        pokemons = list(query)
+
+        known_pokemon = set(p['pokemon_id'] for p in query)
+        unknown_pokemon = set(range(1, 151)).difference(known_pokemon)
+        pokemons.extend({'pokemon_id': i, 'count': 0} for i in unknown_pokemon)
+        for p in pokemons:
+            p['pokemon_name'] = get_pokemon_name(p['pokemon_id'])
+
+        return pokemons
 
 class Pokestop(BaseModel):
     pokestop_id = CharField(primary_key=True)
@@ -108,6 +122,9 @@ def parse_map(map_dict):
     gyms = {}
 
     cells = map_dict['responses']['GET_MAP_OBJECTS']['map_cells']
+    if sum(len(cell.keys()) for cell in cells) == len(cells) * 2:
+        log.warning("Received valid response but without any data. Possibly rate-limited?")
+
     for cell in cells:
         for p in cell.get('wild_pokemons', []):
             if p['encounter_id'] in pokemons:
@@ -123,6 +140,9 @@ def parse_map(map_dict):
                         (p['last_modified_timestamp_ms'] +
                          p['time_till_hidden_ms']) / 1000.0)
             }
+            if p['time_till_hidden_ms'] < 0 or p['time_till_hidden_ms'] > 900000:
+                pokemons[p['encounter_id']]['disappear_time'] = datetime.utcfromtimestamp(
+                        p['last_modified_timestamp_ms']/1000 + 15*60)
 
         for p in cell.get('catchable_pokemons', []):
             if p['encounter_id'] in pokemons:
@@ -176,7 +196,7 @@ def parse_map(map_dict):
                     'last_modified': datetime.utcfromtimestamp(
                             f['last_modified_timestamp_ms'] / 1000.0),
                 }
-                
+
     with db.atomic() and lock:
         if pokemons:
             log.info("Upserting {} pokemon".format(len(pokemons)))
